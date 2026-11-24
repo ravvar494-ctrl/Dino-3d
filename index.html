@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>DINO 3D: EVOLUTION RUNNER</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Three.js (Local offline bundle with CDN fallback) -->
+  <script src="lib/three.min.js"></script>
+  <script>
+    if (typeof THREE === 'undefined') {
+      document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"><\/script>');
+    }
+  </script>
+</head>
+<body>
+  <div id="game-container">
+    <canvas id="webgl-canvas"></canvas>
+
+    <!-- Top HUD Overlay -->
+    <header id="hud" class="hidden">
+      <div class="hud-left">
+        <!-- In-run Level & XP -->
+        <div class="hud-card run-level-box">
+          <div class="level-badge" id="hud-run-level">POZ 1</div>
+          <div class="xp-bar-container">
+            <div class="xp-bar-fill" id="hud-xp-fill"></div>
+            <span class="xp-text" id="hud-xp-text">0 / 100 XP</span>
+          </div>
+        </div>
+
+        <!-- Health / Shields -->
+        <div class="hud-card shields-box">
+          <span class="shield-label">TARCZE:</span>
+          <div class="shield-orbs" id="hud-shields">
+            <!-- Dynamically generated hearts/shields -->
+          </div>
+        </div>
+      </div>
+
+      <div class="hud-center">
+        <!-- Score & Multiplier -->
+        <div class="score-display">
+          <span class="score-digits" id="hud-score">00000</span>
+          <span class="score-mult" id="hud-multiplier">x1.0</span>
+        </div>
+        <div class="hud-tags-row">
+          <div class="biome-tag" id="hud-biome-tag">PUSTYNIA PREHISTORYCZNA</div>
+          <div class="music-tag-badge phase-0" id="hud-music-tag">🎵 SPOKOJNY BIEG (106 BPM)</div>
+        </div>
+      </div>
+
+      <div class="hud-right">
+        <!-- Amber / DNA collected in run -->
+        <div class="hud-card amber-box">
+          <div class="amber-icon">💎</div>
+          <span class="amber-val" id="hud-amber">0</span>
+        </div>
+
+        <!-- Speed & Distance -->
+        <div class="hud-card speed-box">
+          <span id="hud-distance">0 m</span>
+        </div>
+
+        <!-- Active Perks / Buffs bar -->
+        <div class="buffs-row" id="hud-buffs"></div>
+
+        <!-- Pause button -->
+        <button id="btn-pause" class="btn-icon" title="Pauza (Esc / P)">⏸</button>
+      </div>
+    </header>
+
+    <!-- Dash Cooldown Indicator -->
+    <div id="dash-cooldown-bar" class="hidden">
+      <div class="dash-fill" id="dash-fill"></div>
+      <span class="dash-label">SPRINT (SHIFT)</span>
+    </div>
+
+    <!-- START / TITLE SCREEN -->
+    <div id="screen-title" class="screen-overlay active">
+      <div class="title-backdrop"></div>
+      <div class="screen-modal title-modal">
+        <div class="title-header">
+          <div class="title-sub">PREHISTORYCZNA EWOLUCJA 3D</div>
+          <h1 class="glitch-title" data-text="DINO 3D">DINO 3D</h1>
+          <div class="title-desc">Przetrwaj bieg w wymiarze 3D, zbieraj prastary bursztyn, mutuj geny i odblokuj potęgę Rexa!</div>
+        </div>
+
+        <div class="title-stats-preview">
+          <div class="stat-pill">
+            <span class="pill-label">POZIOM PROFILU</span>
+            <span class="pill-value" id="title-profile-level">1</span>
+          </div>
+          <div class="stat-pill">
+            <span class="pill-label">BURSZTYN (DNA)</span>
+            <span class="pill-value" id="title-amber-total">💎 0</span>
+          </div>
+          <div class="stat-pill">
+            <span class="pill-label">REKORD</span>
+            <span class="pill-value" id="title-high-score">0</span>
+          </div>
+        </div>
+
+        <div class="title-actions">
+          <button id="btn-play" class="btn-primary glow-pulse">ROZPOCZNIJ BIEG (SPACJA)</button>
+          <div class="title-sub-buttons">
+            <button id="btn-open-evolution" class="btn-secondary">🧬 DRZEWKO EWOLUCJI</button>
+            <button id="btn-open-skins" class="btn-secondary">🦖 SKÓRKI DINO</button>
+            <button id="btn-open-leaderboard" class="btn-secondary glow-badge">🏆 TABLICA WYNIKÓW</button>
+            <button id="btn-open-help" class="btn-secondary">❓ STEROWANIE</button>
+          </div>
+        </div>
+
+        <div class="sound-toggle-bar">
+          <button id="btn-toggle-sound" class="btn-small">DŹWIĘK: WŁĄCZONY 🔊</button>
+          <button id="btn-toggle-music" class="btn-small">SYNTH MUZYKA: WŁĄCZONA 🎵</button>
+          <button id="btn-camera-view" class="btn-small">KAMERA: DYNAMICZNA 🎥</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- LEVEL UP / PERK SELECTION SCREEN (In-Run Roguelite Choice) -->
+    <div id="screen-levelup" class="screen-overlay hidden">
+      <div class="level-up-container">
+        <div class="levelup-header">
+          <h2 class="levelup-title">AWANS NA POZIOM <span id="levelup-tier-num">2</span>!</h2>
+          <p class="levelup-subtitle">Wybierz tymczasową mutację na ten bieg:</p>
+        </div>
+        <div class="perk-cards-grid" id="perk-cards-container">
+          <!-- 3 dynamically injected cards -->
+        </div>
+      </div>
+    </div>
+
+    <!-- EVOLUTION / TALENT TREE MODAL (Persistent Progression) -->
+    <div id="modal-evolution" class="screen-overlay hidden">
+      <div class="screen-modal evolution-modal">
+        <div class="modal-top">
+          <div>
+            <h2>LABORATORIUM DNA I EWOLUCJI</h2>
+            <p>Inwestuj zebrany bursztyn DNA w stałe wzmocnienia parametrów Dinozaura.</p>
+          </div>
+          <div class="dna-balance">
+            <span>Dostępne DNA:</span>
+            <strong id="evo-amber-balance">💎 0</strong>
+          </div>
+          <button class="modal-close-btn" id="btn-close-evolution">&times;</button>
+        </div>
+
+        <div class="talents-grid" id="talents-tree-container">
+          <!-- Dynamically populated talent nodes -->
+        </div>
+
+        <div class="modal-footer">
+          <div class="meta-info">Wzmocnienia są trwałe i działają w każdym kolejnym biegu.</div>
+          <button id="btn-reset-talents" class="btn-danger-outline">Zresetuj Talenty</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- SKINS / MUTATIONS MODAL -->
+    <div id="modal-skins" class="screen-overlay hidden">
+      <div class="screen-modal skins-modal">
+        <div class="modal-top">
+          <div>
+            <h2>EWOLUCYJNE SKÓRKI DINO</h2>
+            <p>Odblokuj unikalne formy Rexa za poziom konta lub osiągnięcia!</p>
+          </div>
+          <button class="modal-close-btn" id="btn-close-skins">&times;</button>
+        </div>
+
+        <div class="skins-grid" id="skins-container">
+          <!-- Dynamically populated skins -->
+        </div>
+      </div>
+    </div>
+
+    <!-- CONTROLS & HELP MODAL -->
+    <div id="modal-help" class="screen-overlay hidden">
+      <div class="screen-modal help-modal">
+        <div class="modal-top">
+          <h2>STEROWANIE I ZASADY</h2>
+          <button class="modal-close-btn" id="btn-close-help">&times;</button>
+        </div>
+        <div class="help-content">
+          <div class="control-grid">
+            <div class="control-item">
+              <span class="key-badge">A / D</span> lub <span class="key-badge">← / →</span>
+              <span>Zmiana toru ruchu (Lewo / Prawo)</span>
+            </div>
+            <div class="control-item">
+              <span class="key-badge">SPACJA / W</span> lub <span class="key-badge">↑</span>
+              <span>Skok (z perkiem: Podwójny skok!)</span>
+            </div>
+            <div class="control-item">
+              <span class="key-badge">S</span> lub <span class="key-badge">↓</span>
+              <span>Wślizg pod pterodaktylami i szybsze lądowanie</span>
+            </div>
+            <div class="control-item">
+              <span class="key-badge">SHIFT / E</span>
+              <span>Błyskawiczny Sprint / Zmiażdżenie przeszkód</span>
+            </div>
+            <div class="control-item">
+              <span class="key-badge">ESC / P</span>
+              <span>Pauza w grze</span>
+            </div>
+            <div class="control-item">
+              <span class="key-badge">C</span>
+              <span>Przełączanie perspektywy kamery (3D / 2.5D / FPV)</span>
+            </div>
+          </div>
+          <div class="mechanics-info">
+            <h3>Mechanika Rozgrywki:</h3>
+            <ul>
+              <li><strong>Bursztyn (💎):</strong> Zbieraj prastare kryształy na trasie. Służą jako waluta w Laboratorium DNA oraz dają punkty XP!</li>
+              <li><strong>Awans w trakcie biegu:</strong> Osiągnięcie nowego poziomu XP wstrzymuje czas i pozwala wybrać 1 z 3 potężnych mutacji roguelite.</li>
+              <li><strong>Biomy:</strong> Każde 1000m zmieniasz biom – od Pustyni, przez Wulkaniczne Pustkowia, aż po Cybernetczną Przyszłość!</li>
+              <li><strong>Tarcze:</strong> Kupione w laboratorium tarcze ratują Cię przed natychmiastową śmiercią przy zderzeniu z kaktusem lub pterodaktylem.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- GAME OVER SCREEN -->
+    <div id="screen-gameover" class="screen-overlay hidden">
+      <div class="screen-modal gameover-modal">
+        <h2 class="gameover-title">KRES PRZETRWANIA</h2>
+        <div class="death-reason" id="death-reason-text">Zderzenie z pradawnym kaktusem!</div>
+
+        <div class="run-summary-grid">
+          <div class="summary-card">
+            <span class="card-label">DYSTANS</span>
+            <span class="card-val" id="summary-distance">0 m</span>
+          </div>
+          <div class="summary-card">
+            <span class="card-label">WYNIK PUNKTOWY</span>
+            <span class="card-val highlight" id="summary-score">0</span>
+          </div>
+          <div class="summary-card">
+            <span class="card-label">POZIOM BIEGU</span>
+            <span class="card-val" id="summary-run-level">POZ 1</span>
+          </div>
+          <div class="summary-card">
+            <span class="card-label">ZEBRANY BURSZTYN</span>
+            <span class="card-val amber" id="summary-amber">+0 💎</span>
+          </div>
+          <div class="summary-card">
+            <span class="card-label">ZYSKANE XP PROFILU</span>
+            <span class="card-val" id="summary-profile-xp">+0 XP</span>
+          </div>
+          <div class="summary-card">
+            <span class="card-label">NAJLEPSZY REKORD</span>
+            <span class="card-val" id="summary-highscore">0</span>
+          </div>
+        </div>
+
+        <!-- Profile Level Progress Bar -->
+        <div class="profile-xp-box">
+          <div class="profile-xp-header">
+            <span>Poziom Profilu: <strong id="summary-profile-lvl">1</strong></span>
+            <span id="summary-profile-pct">0%</span>
+          </div>
+          <div class="profile-xp-bar">
+            <div class="profile-xp-fill" id="summary-profile-fill"></div>
+          </div>
+        </div>
+
+        <!-- Leaderboard Submission Box -->
+        <div class="leaderboard-submit-box">
+          <div class="submit-title">🏆 Zapisz swój wynik w rankingu:</div>
+          <div class="submit-row">
+            <input type="text" id="player-nickname-input" maxlength="18" placeholder="Wpisz swój pseudonim..." autocomplete="off">
+            <button id="btn-submit-score" class="btn-primary">💾 ZAPISZ</button>
+          </div>
+          <div id="submit-feedback" class="submit-feedback-msg"></div>
+        </div>
+
+        <div class="gameover-actions">
+          <button id="btn-restart" class="btn-primary glow-pulse">ZAGRAJ PONOWNIE (SPACJA)</button>
+          <button id="btn-gameover-leaderboard" class="btn-secondary glow-badge">🏆 TABLICA WYNIKÓW</button>
+          <button id="btn-gameover-evolution" class="btn-secondary">🧬 ULEPSZENIA DNA</button>
+          <button id="btn-gameover-menu" class="btn-secondary">🏠 MENU GŁÓWNE</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- LEADERBOARD / COMMUNITY RANKING MODAL -->
+    <div id="modal-leaderboard" class="screen-overlay hidden">
+      <div class="screen-modal leaderboard-modal">
+        <div class="modal-top">
+          <div>
+            <h2>🏆 TABLICA WYNIKÓW I RANKING</h2>
+            <p>Porównaj swój wynik i dystans z najlepszymi uciekinierami Dino 3D!</p>
+          </div>
+          <button class="modal-close-btn" id="btn-close-leaderboard">&times;</button>
+        </div>
+
+        <div class="leaderboard-tabs">
+          <button id="tab-global-scores" class="tab-btn active">🌐 TOP 10 ŚWIAT</button>
+          <button id="tab-player-history" class="tab-btn">📜 TWOJA HISTORIA</button>
+        </div>
+
+        <div class="leaderboard-stats-summary" id="leaderboard-my-summary">
+          <span>Twój Najlepszy Wynik: <strong id="lb-my-best-score">Brak</strong></span>
+          <span>Pozycja w Rankingu: <strong id="lb-my-best-rank">--</strong></span>
+        </div>
+
+        <div class="leaderboard-table-container">
+          <table class="leaderboard-table">
+            <thead>
+              <tr>
+                <th>POZ</th>
+                <th>GRACZ</th>
+                <th>PUNKTY</th>
+                <th>DYSTANS</th>
+                <th>SKÓRKA</th>
+                <th>DATA</th>
+              </tr>
+            </thead>
+            <tbody id="leaderboard-tbody">
+              <!-- Dynamically populated rows -->
+            </tbody>
+          </table>
+        </div>
+
+        <div class="modal-footer">
+          <div class="meta-info">Wyniki są zapisywane lokalnie i porównywane z rywalami.</div>
+          <button id="btn-reset-leaderboard" class="btn-danger-outline">Zresetuj Ranking</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAUSE SCREEN -->
+    <div id="screen-pause" class="screen-overlay hidden">
+      <div class="screen-modal pause-modal">
+        <h2>GRA ZATRZYMANA</h2>
+        <div class="pause-actions">
+          <button id="btn-resume" class="btn-primary">WZNÓW GRĘ</button>
+          <button id="btn-pause-options" class="btn-secondary">OPCJE DŹWIĘKU / KAMERY</button>
+          <button id="btn-quit-run" class="btn-danger-outline">ZAKOŃCZ BIEG</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ON-SCREEN TOUCH CONTROLS FOR MOBILE / TABLET -->
+    <div id="mobile-controls" class="hidden">
+      <div class="mobile-row">
+        <button id="touch-left" class="touch-btn">◀</button>
+        <button id="touch-jump" class="touch-btn touch-action">▲ SKOK</button>
+        <button id="touch-duck" class="touch-btn touch-action">▼ ŚLIZG</button>
+        <button id="touch-right" class="touch-btn">▶</button>
+        <button id="touch-dash" class="touch-btn touch-special">⚡ SPRINT</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="src/audio.js"></script>
+  <script src="src/models.js"></script>
+  <script src="src/upgrades.js"></script>
+  <script src="src/leaderboard.js"></script>
+  <script src="src/game.js"></script>
+</body>
+</html>
